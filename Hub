@@ -191,7 +191,7 @@ task.spawn(function()
     end
 end)
 
--- --- UI ---
+-- --- UI SETUP ---
 if CoreGui:FindFirstChild("GeminiEliteV17") then CoreGui.GeminiEliteV17:Destroy() end
 local Screen = Instance.new("ScreenGui", CoreGui); Screen.Name = "GeminiEliteV17"; Screen.ResetOnSpawn = false
 local Main = Instance.new("Frame", Screen)
@@ -253,21 +253,40 @@ end
 
 local Combat = CreateTab("Combat"); local Visuals = CreateTab("Visuals"); local Utility = CreateTab("Utility"); local World = CreateTab("World")
 
+-- --- TOGGLES ---
 AddToggle(Combat, "Aimbot", "aim", function() end)
 AddToggle(Combat, "Auto destroy turret", "turret", function() end)
 AddToggle(Visuals, "Esp", "esp_box", function() end)
 AddToggle(Visuals, "Pet Esp", "pesp", function(act) 
     if act then 
-        local s, e = pcall(function()
+        pcall(function()
             local source = game:HttpGet("https://raw.githubusercontent.com/najrembat1111-commits/Scan-best/refs/heads/main/Scan%20best")
             source = source:gsub("Width0%s*=%s*[%d%.]+", "Width0 = 1.2")
             source = source:gsub("Width1%s*=%s*[%d%.]+", "Width1 = 1.2")
             source = source:gsub("LightEmission%s*=%s*[%d%.]+", "LightEmission = 1")
             source = source:gsub("attachment.Position%s*=%s*Vector3.new%(0, 0, 0%)", "attachment.Position = Vector3.new(0, -0.6, 0)")
             loadstring(source)()
+            
+            task.spawn(function()
+                while _G.GeminiToggles.pesp do
+                    local box = workspace:FindFirstChild("Delivery Box", true) or workspace:FindFirstChild("Box", true)
+                    if box and LP.Character and LP.Character:FindFirstChild("HumanoidRootPart") then
+                        if not box:FindFirstChild("DeliveryBeam") then
+                            local a0 = Instance.new("Attachment", LP.Character.HumanoidRootPart)
+                            local a1 = Instance.new("Attachment", box)
+                            local b = Instance.new("Beam", box)
+                            b.Name = "DeliveryBeam"; b.Attachment0 = a0; b.Attachment1 = a1
+                            b.Color = ColorSequence.new(Color3.fromRGB(255, 0, 0))
+                            b.Width0 = 1.5; b.Width1 = 1.5; b.LightEmission = 1; b.FaceCamera = true
+                        end
+                    end
+                    task.wait(2)
+                end
+            end)
         end)
     end 
 end)
+
 AddToggle(Utility, "Anti bee+disco", "bee_disco", function() end)
 AddToggle(Utility, "AntiLag", "alag", function(act) if act then pcall(function() for _, v in ipairs(workspace:GetDescendants()) do if v:IsA("BasePart") then v.Material = Enum.Material.SmoothPlastic; v.CastShadow = false end end end) end end)
 AddToggle(Utility, "Anti ragdoll", "anti_r", function(act) if act then loadstring(game:HttpGet("https://raw.githubusercontent.com/najrembat1111-commits/Ragdoll-ai-/refs/heads/main/Ar"))() end end)
@@ -290,6 +309,18 @@ AddToggle(World, "Cloner", "clon_pop", function(act)
     end)
     else if _G.C1 then _G.C1:Destroy() end end
 end)
+
+AddToggle(World, "Xray Base", "xray_base", function(act)
+    local KEYWORD = "structure base home"
+    local plots = workspace:FindFirstChild("Plots") or workspace
+    for _, item in ipairs(plots:GetDescendants()) do
+        if item:IsA("BasePart") and item.Name == KEYWORD then
+            item.Transparency = act and 0.5 or 0
+            item.CastShadow = not act
+        end
+    end
+end)
+
 AddToggle(World, "Inf jump", "jump", function() UIS.JumpRequest:Connect(function() if _G.GeminiToggles.jump and LP.Character:FindFirstChild("HumanoidRootPart") then LP.Character.HumanoidRootPart.Velocity = Vector3.new(LP.Character.HumanoidRootPart.Velocity.X, 50, LP.Character.HumanoidRootPart.Velocity.Z) end end) end)
 AddToggle(World, "Anti Cam Coll", "coll", function(act) while _G.GeminiToggles.coll do LP.DevCameraOcclusionMode = "Invisicam"; task.wait() end end)
 AddToggle(World, "Cam zoom", "zoom", function(act) LP.CameraMaxZoomDistance = act and 32 or 12.5; LP.CameraMinZoomDistance = act and 32 or 0.5 end)
