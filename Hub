@@ -1,0 +1,301 @@
+local Players = game:GetService("Players")
+local UIS = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local VIM = game:GetService("VirtualInputManager")
+local HttpService = game:GetService("HttpService")
+local LP = Players.LocalPlayer
+
+-- --- CONFIG / SAVE SYSTEM ---
+local FILE_NAME = "GeminiEliteConfig.json"
+_G.GeminiToggles = {}
+
+local function SaveSettings()
+    pcall(function()
+        local data = HttpService:JSONEncode(_G.GeminiToggles)
+        writefile(FILE_NAME, data)
+    end)
+end
+
+local function LoadSettings()
+    if isfile(FILE_NAME) then
+        pcall(function()
+            local data = HttpService:JSONDecode(readfile(FILE_NAME))
+            for k, v in pairs(data) do _G.GeminiToggles[k] = v end
+        end)
+    end
+end
+LoadSettings()
+
+-- --- MASTER SHIELD V21 DATA ---
+local trashNames = {["DiscoEffect"] = true, ["Blur"] = true, ["BeeEffect"] = true, ["Beehive"] = true, ["Buzzing"] = true, ["BeeHiveNajrembat1"] = true, ["BoogieBombController"] = true, ["CameraShake"] = true}
+local trashClasses = {["ColorCorrectionEffect"] = true, ["BlurEffect"] = true, ["ParticleEmitter"] = true}
+
+local PlayerModule = require(LP.PlayerScripts:WaitForChild("PlayerModule"))
+local Controls = PlayerModule:GetControls()
+
+-- --- AIMBOT ---
+local function GetAimbotTarget()
+    local Character = LP.Character
+    if not Character then return nil end
+    local MyRoot = Character:FindFirstChild("HumanoidRootPart")
+    if not MyRoot then return nil end
+    local Target = nil
+    local MaxDist = 500
+    for _, v in ipairs(Players:GetPlayers()) do
+        if v ~= LP and v.Character and v.Character:FindFirstChild("Head") then
+            local Distance = (MyRoot.Position - v.Character.Head.Position).Magnitude
+            if Distance < MaxDist then
+                MaxDist = Distance
+                Target = v.Character.Head
+            end
+        end
+    end
+    return Target
+end
+
+local mt = getrawmetatable(game)
+local oldNamecall = mt.__namecall
+setreadonly(mt, false)
+mt.__namecall = newcclosure(function(self, ...)
+    local method = getnamecallmethod()
+    if _G.GeminiToggles.aim and not checkcaller() and (method == "Raycast" or method == "FindPartOnRay") then
+        local TargetPart = GetAimbotTarget()
+        if TargetPart then
+            return {Instance = TargetPart, Position = TargetPart.Position, Material = TargetPart.Material, Normal = Vector3.new(0, 1, 0)}
+        end
+    end
+    return oldNamecall(self, ...)
+end)
+setreadonly(mt, true)
+
+-- --- ESP ---
+local ACCENT = Color3.fromRGB(0, 255, 255)
+local function createESP(player)
+    if player == LP then return end
+    local function setup(character)
+        local root = character:WaitForChild("HumanoidRootPart", 10)
+        local head = character:WaitForChild("Head", 10)
+        if not root or not head then return end
+        
+        local boxGui = Instance.new("BillboardGui", root)
+        boxGui.Name = "ESP_Box"; boxGui.AlwaysOnTop = true; boxGui.Size = UDim2.new(0, 30, 0, 45)
+        local boxFrame = Instance.new("Frame", boxGui)
+        boxFrame.Size = UDim2.new(1, 0, 1, 0); boxFrame.BackgroundTransparency = 1
+        local boxStroke = Instance.new("UIStroke", boxFrame)
+        boxStroke.Thickness = 3.5; boxStroke.Color = ACCENT
+
+        local nameGui = Instance.new("BillboardGui", head)
+        nameGui.Name = "ESP_Name"; nameGui.AlwaysOnTop = true; nameGui.Size = UDim2.new(0, 60, 0, 20); nameGui.StudsOffset = Vector3.new(0, -8, 0)
+        local nameLabel = Instance.new("TextLabel", nameGui)
+        nameLabel.Size = UDim2.new(1, 0, 1, 0); nameLabel.BackgroundColor3 = Color3.new(0, 0, 0); nameLabel.BackgroundTransparency = 0.5
+        nameLabel.Text = player.DisplayName or player.Name; nameLabel.TextColor3 = Color3.new(1, 1, 1); nameLabel.TextScaled = true; nameLabel.Font = Enum.Font.GothamBold
+        Instance.new("UICorner", nameLabel).CornerRadius = UDim.new(0, 4)
+        
+        RunService.RenderStepped:Connect(function()
+            local active = _G.GeminiToggles.esp_box == true
+            boxGui.Enabled = active; nameGui.Enabled = active
+        end)
+    end
+    if player.Character then setup(player.Character) end
+    player.CharacterAdded:Connect(setup)
+end
+for _, p in pairs(Players:GetPlayers()) do createESP(p) end
+Players.PlayerAdded:Connect(createESP)
+
+-- --- AUTO DESTROY TURRET ---
+local function getPlacedSentry()
+    for _, obj in pairs(workspace:GetChildren()) do
+        if string.find(obj.Name, "Sentry") and (obj:IsA("BasePart") or obj:IsA("Model")) then
+            if obj:GetPivot().Position.Magnitude > 1 then return obj end
+        end
+    end
+    return nil
+end
+
+task.spawn(function()
+    local MEGA_SIZE = Vector3.new(2000, 2000, 2000)
+    local DEPLOY_DELAY = 3.8
+    local lastTarget = nil 
+
+    while true do
+        if _G.GeminiToggles.turret then
+            local target = getPlacedSentry()
+            if target and target ~= lastTarget then
+                lastTarget = target
+                task.wait(DEPLOY_DELAY)
+                
+                local char = LP.Character
+                if target and target.Parent and char then
+                    local backpack = LP:WaitForChild("Backpack")
+                    local bat = backpack:FindFirstChild("Bat") or char:FindFirstChild("Bat")
+                    local handle = bat and (bat:FindFirstChild("Handle") or bat:FindFirstChildWhichIsA("BasePart"))
+
+                    if bat and handle then
+                        bat.Parent = char
+                        local originalSize = handle.Size
+                        handle.Massless = true; handle.CanCollide = false; handle.Size = MEGA_SIZE; handle.Transparency = 0.8
+                        
+                        bat:Activate()
+                        for i = 1, 25 do 
+                            if not target.Parent then break end
+                            if firetouchinterest then
+                                firetouchinterest(target, handle, 0)
+                                task.wait(0.01)
+                                firetouchinterest(target, handle, 1)
+                            end
+                        end
+                        
+                        handle.Size = originalSize; handle.Transparency = 0; bat.Parent = backpack
+                    end
+                end
+            end
+            if lastTarget and not lastTarget.Parent then lastTarget = nil end
+        end
+        task.wait(0.1) 
+    end
+end)
+
+-- --- ANTI BEE & DISCO ENGINE ---
+RunService.RenderStepped:Connect(function()
+    if not _G.GeminiToggles.bee_disco then return end
+    local char = LP.Character; local hum = char and char:FindFirstChildOfClass("Humanoid"); local hrp = char and char:FindFirstChild("HumanoidRootPart"); local cam = workspace.CurrentCamera
+    
+    if LP.CameraMaxZoomDistance ~= 400 then LP.CameraMaxZoomDistance = 400 end
+    if LP.CameraMinZoomDistance ~= 0.5 then LP.CameraMinZoomDistance = 0.5 end
+    if cam.FieldOfView ~= 70 then cam.FieldOfView = 70 end
+    if hum and hum.CameraOffset ~= Vector3.new(0, 0, 0) then hum.CameraOffset = Vector3.new(0, 0, 0) end
+
+    if hum and hrp then
+        local moveVector = Controls:GetMoveVector()
+        if moveVector.Magnitude > 0 then
+            local look = cam.CFrame.LookVector; local right = cam.CFrame.RightVector
+            hum:Move((Vector3.new(look.X, 0, look.Z).Unit * -moveVector.Z) + (Vector3.new(right.X, 0, right.Z).Unit * moveVector.X), false)
+        end
+        local rj = hrp:FindFirstChild("RootJoint")
+        if rj then rj.C0 = CFrame.new(0, 0, 0) * CFrame.Angles(-math.pi/2, 0, math.pi) end
+    end
+    if Lighting.ClockTime ~= 14 then Lighting.ClockTime = 14 end
+end)
+
+task.spawn(function()
+    while task.wait(1) do
+        if _G.GeminiToggles.bee_disco then
+            for _, obj in pairs(Lighting:GetChildren()) do if trashNames[obj.Name] or trashClasses[obj.ClassName] then obj:Destroy() end end
+            for _, obj in pairs(workspace.CurrentCamera:GetChildren()) do if trashNames[obj.Name] or obj:IsA("ParticleEmitter") or obj.Name:find("Shake") then obj:Destroy() end end
+            local rsItems = ReplicatedStorage:FindFirstChild("ItemController", true)
+            if rsItems then for _, v in pairs(rsItems:GetChildren()) do if v.Name:find("Bee") or v.Name:find("Boogie") then v:Destroy() end end end
+        end
+    end
+end)
+
+-- --- UI ---
+if CoreGui:FindFirstChild("GeminiEliteV17") then CoreGui.GeminiEliteV17:Destroy() end
+local Screen = Instance.new("ScreenGui", CoreGui); Screen.Name = "GeminiEliteV17"; Screen.ResetOnSpawn = false
+local Main = Instance.new("Frame", Screen)
+Main.Size = UDim2.new(0, 560, 0, 360); Main.Position = UDim2.new(0.5, -280, 0.5, -180); Main.BackgroundColor3 = Color3.fromRGB(15, 15, 18); Main.BorderSizePixel = 0
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10); local MainStroke = Instance.new("UIStroke", Main); MainStroke.Color = ACCENT; MainStroke.Thickness = 1.5
+
+local Mini = Instance.new("TextButton", Main)
+Mini.Size = UDim2.new(0, 30, 0, 30); Mini.Position = UDim2.new(1, -35, 0, 5); Mini.BackgroundTransparency = 1; Mini.Text = "-"; Mini.TextColor3 = ACCENT; Mini.TextSize = 25; Mini.Font = Enum.Font.GothamBold
+local Minimized = false
+Mini.MouseButton1Click:Connect(function()
+    Minimized = not Minimized
+    for _, v in pairs(Main:GetChildren()) do if v.ClassName == "Frame" then v.Visible = not Minimized end end
+    Main:TweenSize(Minimized and UDim2.new(0, 560, 0, 40) or UDim2.new(0, 560, 0, 360), "Out", "Quad", 0.2, true)
+    Mini.Text = Minimized and "+" or "-"
+end)
+
+local Sidebar = Instance.new("Frame", Main); Sidebar.Size = UDim2.new(0, 140, 1, -50); Sidebar.Position = UDim2.new(0, 10, 0, 40); Sidebar.BackgroundTransparency = 1
+Instance.new("UIListLayout", Sidebar).Padding = UDim.new(0, 8)
+local PageHolder = Instance.new("Frame", Main); PageHolder.Size = UDim2.new(1, -170, 1, -50); PageHolder.Position = UDim2.new(0, 160, 0, 40); PageHolder.BackgroundTransparency = 1
+
+local Pages = {}
+local function CreateTab(name)
+    local Page = Instance.new("ScrollingFrame", PageHolder); Page.Size = UDim2.new(1, 0, 1, 0); Page.BackgroundTransparency = 1; Page.Visible = false; Page.ScrollBarThickness = 2; Page.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    Instance.new("UIListLayout", Page).Padding = UDim.new(0, 10)
+    local TabBtn = Instance.new("TextButton", Sidebar); TabBtn.Size = UDim2.new(1, 0, 0, 40); TabBtn.BackgroundColor3 = Color3.fromRGB(22, 22, 26); TabBtn.Text = name:upper(); TabBtn.TextColor3 = Color3.fromRGB(140, 140, 140); TabBtn.Font = Enum.Font.GothamBold; TabBtn.TextSize = 13; Instance.new("UICorner", TabBtn)
+    TabBtn.MouseButton1Click:Connect(function()
+        for _, p in pairs(Pages) do p.Visible = false end
+        for _, b in pairs(Sidebar:GetChildren()) do if b:IsA("TextButton") then b.TextColor3 = Color3.fromRGB(140, 140, 140) end end
+        Page.Visible = true; TabBtn.TextColor3 = ACCENT
+    end)
+    Pages[name] = Page; return Page
+end
+
+local function CreateOverlay(name, text, pos, size, action)
+    if CoreGui:FindFirstChild(name) then CoreGui[name]:Destroy() end
+    local sg = Instance.new("ScreenGui", CoreGui); sg.Name = name; sg.IgnoreGuiInset = true
+    local b = Instance.new("TextButton", sg); b.AnchorPoint = Vector2.new(0.5, 0.5); b.Size, b.Position = size, pos
+    b.BackgroundColor3 = Color3.fromRGB(10, 10, 10); b.Text, b.TextColor3 = text:upper(), ACCENT; b.Font = Enum.Font.GothamBold; b.TextSize = 15
+    Instance.new("UICorner", b); local s = Instance.new("UIStroke", b); s.Color = ACCENT; b.MouseButton1Click:Connect(action) return sg
+end
+
+local function AddToggle(parent, text, stateKey, callback)
+    local Row = Instance.new("Frame", parent); Row.Size = UDim2.new(1, -10, 0, 45); Row.BackgroundColor3 = Color3.fromRGB(22, 22, 26); Instance.new("UICorner", Row)
+    local Label = Instance.new("TextLabel", Row); Label.Text = text:upper(); Label.Size = UDim2.new(0.6, 0, 1, 0); Label.Position = UDim2.new(0, 12, 0, 0); Label.TextColor3 = Color3.new(1,1,1); Label.BackgroundTransparency = 1; Label.Font = Enum.Font.GothamBold; Label.TextSize = 11; Label.TextXAlignment = Enum.TextXAlignment.Left
+    local Switch = Instance.new("TextButton", Row); Switch.Size = UDim2.new(0, 45, 0, 22); Switch.Position = UDim2.new(1, -55, 0.5, -11); Switch.BackgroundColor3 = Color3.fromRGB(40, 40, 45); Switch.Text = ""
+    Instance.new("UICorner", Switch).CornerRadius = UDim.new(1, 0); local Dot = Instance.new("Frame", Switch); Dot.Size = UDim2.new(0, 18, 0, 18); Dot.Position = UDim2.new(0, 2, 0.5, -9); Dot.BackgroundColor3 = Color3.new(1, 1, 1); Instance.new("UICorner", Dot).CornerRadius = UDim.new(1, 0)
+    
+    local function UpdateUI(act)
+        Dot:TweenPosition(act and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9), "Out", "Quad", 0.1, true)
+        Switch.BackgroundColor3 = act and ACCENT or Color3.fromRGB(40, 40, 45)
+    end
+    Switch.MouseButton1Click:Connect(function()
+        _G.GeminiToggles[stateKey] = not _G.GeminiToggles[stateKey]
+        UpdateUI(_G.GeminiToggles[stateKey]); SaveSettings()
+        task.spawn(function() callback(_G.GeminiToggles[stateKey]) end)
+    end)
+    if _G.GeminiToggles[stateKey] == true then UpdateUI(true); task.spawn(function() callback(true) end) end
+end
+
+local Combat = CreateTab("Combat"); local Visuals = CreateTab("Visuals"); local Utility = CreateTab("Utility"); local World = CreateTab("World")
+
+AddToggle(Combat, "Aimbot", "aim", function() end)
+AddToggle(Combat, "Auto destroy turret", "turret", function() end)
+AddToggle(Visuals, "Esp", "esp_box", function() end)
+AddToggle(Visuals, "Pet Esp", "pesp", function(act) 
+    if act then 
+        local s, e = pcall(function()
+            local source = game:HttpGet("https://raw.githubusercontent.com/najrembat1111-commits/Scan-best/refs/heads/main/Scan%20best")
+            source = source:gsub("Width0%s*=%s*[%d%.]+", "Width0 = 1.2")
+            source = source:gsub("Width1%s*=%s*[%d%.]+", "Width1 = 1.2")
+            source = source:gsub("LightEmission%s*=%s*[%d%.]+", "LightEmission = 1")
+            source = source:gsub("attachment.Position%s*=%s*Vector3.new%(0, 0, 0%)", "attachment.Position = Vector3.new(0, -0.6, 0)")
+            loadstring(source)()
+        end)
+    end 
+end)
+AddToggle(Utility, "Anti bee+disco", "bee_disco", function() end)
+AddToggle(Utility, "AntiLag", "alag", function(act) if act then pcall(function() for _, v in ipairs(workspace:GetDescendants()) do if v:IsA("BasePart") then v.Material = Enum.Material.SmoothPlastic; v.CastShadow = false end end end) end end)
+AddToggle(Utility, "Anti ragdoll", "anti_r", function(act) if act then loadstring(game:HttpGet("https://raw.githubusercontent.com/najrembat1111-commits/Ragdoll-ai-/refs/heads/main/Ar"))() end end)
+AddToggle(Utility, "Insta grab", "grab", function(act) if act then loadstring(game:HttpGet("https://raw.githubusercontent.com/najrembat1111-commits/Insta-grab/refs/heads/main/Insta%20grab"))() end end)
+AddToggle(Utility, "cancel full error", "cerr", function(act) if act then loadstring(game:HttpGet("https://raw.githubusercontent.com/Overdrivehohd/disablefullerror/refs/heads/main/Working"))() end end)
+
+AddToggle(Utility, "Ragdoll Self", "rag_pop", function(act)
+    if act then _G.R1 = CreateOverlay("RagUI", "RAGDOLL", UDim2.new(0.75, 0, 0.05, 0), UDim2.new(0, 80, 0, 28), function() game:GetService("TextChatService").TextChannels.RBXGeneral:SendAsync("/ragdoll "..LP.Name) end)
+    else if _G.R1 then _G.R1:Destroy() end end
+end)
+AddToggle(Utility, "Leave", "lv_pop", function(act)
+    if act then _G.L1 = CreateOverlay("LeaveUI", "LEAVE", UDim2.new(0.96, 0, 0.42, 0), UDim2.new(0, 80, 0, 28), function() game:Shutdown() end)
+    else if _G.L1 then _G.L1:Destroy() end end
+end)
+
+AddToggle(World, "Cloner", "clon_pop", function(act)
+    if act then _G.C1 = CreateOverlay("ClonUI", "CLONER", UDim2.new(0.91, 0, 0.23, 0), UDim2.new(0, 80, 0, 28), function() 
+        local char = LP.Character; local tool = char and (LP.Backpack:FindFirstChild("Quantum Cloner") or char:FindFirstChild("Quantum Cloner"))
+        if tool then char.Humanoid:EquipTool(tool); RunService.RenderStepped:Wait(); local x, y = workspace.CurrentCamera.ViewportSize.X, workspace.CurrentCamera.ViewportSize.Y; VIM:SendMouseButtonEvent(x/2, y/2, 0, true, game, 1); VIM:SendMouseButtonEvent(x/2, y/2, 0, false, game, 1); task.wait(0.04); VIM:SendMouseButtonEvent(x * 0.54, y * 0.72, 0, true, game, 1); VIM:SendMouseButtonEvent(x * 0.54, y * 0.72, 0, false, game, 1) end
+    end)
+    else if _G.C1 then _G.C1:Destroy() end end
+end)
+AddToggle(World, "Inf jump", "jump", function() UIS.JumpRequest:Connect(function() if _G.GeminiToggles.jump and LP.Character:FindFirstChild("HumanoidRootPart") then LP.Character.HumanoidRootPart.Velocity = Vector3.new(LP.Character.HumanoidRootPart.Velocity.X, 50, LP.Character.HumanoidRootPart.Velocity.Z) end end) end)
+AddToggle(World, "Anti Cam Coll", "coll", function(act) while _G.GeminiToggles.coll do LP.DevCameraOcclusionMode = "Invisicam"; task.wait() end end)
+AddToggle(World, "Cam zoom", "zoom", function(act) LP.CameraMaxZoomDistance = act and 32 or 12.5; LP.CameraMinZoomDistance = act and 32 or 0.5 end)
+
+-- DRAGGING
+local d, dp, sp; Main.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 then d = true; dp = i.Position; sp = Main.Position end end)
+UIS.InputChanged:Connect(function(i) if d and i.UserInputType == Enum.UserInputType.MouseMovement then local delta = i.Position - dp; Main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + delta.X, sp.Y.Scale, sp.Y.Offset + delta.Y) end end)
+UIS.InputEnded:Connect(function() d = false end)
+Pages["Combat"].Visible = true; Sidebar:FindFirstChild("COMBAT").TextColor3 = ACCENT
